@@ -16,17 +16,14 @@ CODON_TO_AA = {'TTT': 'F', 'TTC': 'F', 'TTA': 'L', 'TTG': 'L', 'TCT': 'S',
 
 STOP_CODONS = set(['TAA', 'TAG', 'TGA'])  # set with stop codons
 
-NT_TO_COMP = {'A' : 'T', 'G' : 'C', 'C' : 'G', 'T' : 'A'}
+NT_TO_COMP = {'A': 'T', 'G': 'C', 'C': 'G', 'T': 'A'}
 
 script, input_file = argv
 
-#ATG is methionine
-#TAA, TAG, TGA are stop codons
-#A = 0, G = 1, C = 2, T = 3
 
-#store genome as single string
-#input: fasta file
-#output: genome as string
+# store genome as single string
+# input: fasta file
+# output: genome as string
 def gen_to_string(file):
      with open(file, "rU") as f:
           seq = ""
@@ -39,93 +36,74 @@ def gen_to_string(file):
           return seq  # yield last sequence in file
 
 
-
-#Return reverse complement of sequence
-#input: sequence as string
-#output: reverse complement as string
+# Return reverse complement of sequence
+# input: sequence as string
+# output: reverse complement as string
 def rev_comp(input):
      newlist = reversed(list(input))
      chars = [NT_TO_COMP[x] for x in newlist]
      return ''.join(chars)
 
-#Extract start codon indices from list of codons
-#input: list of codons
-#output: list of indices associated with start codons
-def find_m(codons):
+
+# Extract open reading frames from a given DNA Sequence
+# Input: DNA sequence as string
+# Output: List of lists of start:int, stop:int, orf:string
+def extract(seq):
      out = []
-     for k,v in enumerate(codons):
-          if v == 'M':
-               out.append(k)
+     start = len(seq) + 1  # running in reverse, so start at end
+     stop = 0  # edge case: found methionine before stop codon
+     for i in range(len(seq) - 1, 1, -3):
+          if seq[i - 2:i + 1] in STOP_CODONS:
+               stop = i + 1
+          elif seq[i - 2:i + 1] == 'ATG':
+               start = i - 2
+               if start < stop:
+                    # print(start, stop)
+                    # print[seq[start:stop]]
+                    out.append((start, stop - 1, seq[start:stop]))
+     return out[::-1]  # put back in order
+
+
+# Compute GC content of ORF
+# Input: ORF as string sequence
+# Output: Percentage of GC bases as string fraction and float
+def gc_content(seq):
+     chars = list(seq[2])
+     gc = 0
+     for char in chars:
+          if char == 'G' or char == 'C':
+               gc += 1
+     out = "GC Content of ORF " + str(seq[0]) + "," + str(seq[1])
+     out += " is " + str(gc) + "/" + str(len(seq[2]))
+     out += " " + str(float(gc) / float(len(seq[2])) * 100)[:4] + "%"
      return out
 
-#Extract stop codons indices from list of codons
-#input: list of codons
-#output: list of indices associated with stop codons
-def find_stop(codons):
-     out = []
-     for k,v in enumerate(codons):
-          if v == '*':
-               out.append(k)
-     return out
 
-#return an orf
-#input: sequence
-#output: orf
-def find_orfs(seq):
-     orfs = []
-     starts = []
-     stops = []
-     rev_seq = rev_comp(seq)
-     codons = [[seq[i:i+3] for i in range(0,len(seq)-2,3)]]
-     print("FIRST SET OF CODONS CALCULATED, COMMANDER")
-     codons.append([seq[i:i+3] for i in range(1,len(seq)-2,3)])
-     print("SECOND SET OF CODONS CALCULATED, COMMANDER")
-     codons.append([seq[i:i+3] for i in range(2,len(seq)-2,3)])
-     print("THIRD SET OF CODONS CALCULATED, COMMANDER")
-     codons.append([rev_seq[i:i+3] for i in range(0,len(seq)-2,3)])
-     print("FOURTH SET OF CODONS CALCULATED, COMMANDER")
-     codons.append([rev_seq[i:i+3] for i in range(1,len(seq)-2,3)])
-     print("FIFTH SET OF CODONS CALCULATED, COMMANDER")
-     codons.append([rev_seq[i:i+3] for i in range(2,len(seq)-2,3)])
-     print("FINAL SET OF CODONS CALCULATED, COMMANDER")
-     aas = [[CODON_TO_AA[x] for x in codons[0]]]
-     print("FIRST SET OF AAS CALCULATED, COMMANDER")
-     aas.append([CODON_TO_AA[x] for x in codons[1]])
-     print("SECOND SET OF AAS CALCULATED, COMMANDER")
-     aas.append([CODON_TO_AA[x] for x in codons[2]])
-     print("THIRD SET OF AAS CALCULATED, COMMANDER")
-     aas.append([CODON_TO_AA[x] for x in codons[3]])
-     print("FOURTH SET OF AAS CALCULATED, COMMANDER")
-     aas.append([CODON_TO_AA[x] for x in codons[4]])
-     print("FIFTH SET OF AAS CALCULATED, COMMANDER")
-     aas.append([CODON_TO_AA[x] for x in codons[5]])
-     print("FINAL SET OF AAS CALCULATED, COMMANDER")
+# Translate ORFs to protein seqs
+# Input: ORF as string
+# Output: Protein sequence as string
+def orf_to_prot(seq):
+     codons = [seq[2][i:i + 3] for i in range(0, len(seq[2]), 3)]
+     aas = [CODON_TO_AA[x] for x in codons]
+     return (seq[0], seq[1], ''.join(aas))
 
-     for step,seqs in enumerate(codons):
-          orfs.append([])
-          print("ASSEMBLING READING FRAMES FOR STEP " + str(step) + ", COMMANDER")
-          for i,codon in enumerate(seqs):
-               open_frame = ""
-               if codon == 'ATG':
-                    print(i)
-                    open_frame += codon
-                    for j,cdn in enumerate(seqs[i+1:]):
-                         open_frame += cdn
-                         if cdn in STOP_CODONS:
-                              orfs[step].append((open_frame,(step%3+3*i,step%3+3*(i+j+1))))
-                              break
-     print(orfs)
-     #print(codons)
+seq = gen_to_string(input_file)  # store the sequence
+comp_seq = rev_comp(seq)  # reverse complement the sequence
+orfs = []  # no orfs yet
+for i in range(0, 3):  # check all offset reading frames
+     orfs.append(extract(seq[:(len(seq) - i)]))
 
-#find_orfs("ATGTGA")
-#find_orfs("TCACAT")
+for i in range(0, 3):  # check all offset reading frames
+     orfs.append(extract(comp_seq[:(len(seq) - i)]))
+gc = [[gc_content(x) for x in y] for y in orfs]  # calculate gc's
+prots = [[orf_to_prot(x) for x in y] for y in orfs]
 
-find_orfs("ATGTACCGTATGCAGTAGCAGAGATTTCCAGATATTTGCCCTAA")
-find_orfs("TTAGGGCAAATATCTGGAAATCTCTGCTACTGCATACGGTACAT")
-find_orfs(gen_to_string(input_file))
-#length
-#gc content (G's + C's)/total
-#codon bias: # of times codon used/total # of amino acid
-#protein sequence analysis
-#molecular weight, hydrophobicity, aromaticity, basicity/polarity
-#quality?
+# print(prots)
+# print(gc[:])
+# print(list('steps'))
+
+# gc content (G's + C's)/total
+# codon bias: # of times codon used/total # of amino acid
+# protein sequence analysis
+# molecular weight, hydrophobicity, aromaticity, basicity/polarity
+# quality
